@@ -1,0 +1,427 @@
+---
+title: "MA304-Exploratory Data Analysis and Data Visualisation"
+author: "2213557-Harshita Goswami"
+subtitle: Final Report
+output:
+  word_document: default
+  html_document: default
+  pdf_document: default
+always_allow_html: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, echo = TRUE)
+## DON'T ALTER THIS: this is to prevent printing the code in your "html" file.
+# Extend the list below to load all the packages required for your analyses here:
+#===============================================================================
+
+#library(dsEssex)
+library(tidyverse)
+library(tidytext)
+library(ggplot2)
+library(ggpubr)
+library(DT)
+library(plotly)
+library(ggrepel)
+library(RCurl)
+library(lubridate)
+library(leaflet)
+library(ggcorrplot)
+
+# import data of the project
+Data_set_Project <- read.csv("37-00049_UOF-P_2016_prepped.CSV")
+
+```
+
+# Introduction
+Here, we have a data set of <b>policing from Dallas</b>,<b>"Texas"</b> which is from year 2016 and is about police behavioral data. we have to analyse this data and visualize the findings through interactive plots and graphics.In this assignments given to us I will try to analyse, compare and demonstrate each ad every important aspects of the given data to find the solution that can be helpful create more fair and equitable policing system in Dallas, Texas.
+
+First of all we will import the data to display the table to start the analysis.
+
+```{r echo=TRUE, warning=FALSE}
+data <- Data_set_Project[-c(1),]
+# to remove the first line of the data
+datatable(data, options = list(
+  pageLength=10, scrollX ='400px'))
+```
+The given data is comprised of 47 columns and 2383 rows (variables). By going inside, we will analyse the data.
+To find the root cause of problem and the solution and to analyse the data we need to focus on some main variables, so that we will be able to Custom reports that go into great depth aid police agencies in enhancing public safety, rebuilding trust, and carrying out their duties in a way that is consistent with their own principles with the given Data.
+
+```{r echo=TRUE, warning=FALSE}
+#selecting some useful variables out of the given all variables
+selected_variables <- select(data,c(INCIDENT_DATE,OFFICER_GENDER,OFFICER_RACE,LOCATION_CITY,LOCATION_STATE,STREET_NAME,OFFICER_INJURY,STREET_TYPE,INCIDENT_REASON,FORCE_EFFECTIVE,STREET_NUMBER,LOCATION_DISTRICT,DIVISION,REPORTING_AREA,SUBJECT_GENDER,SUBJECT_RACE,INCIDENT_REASON,SUBJECT_OFFENSE,REASON_FOR_FORCE,SUBJECT_INJURY,REPORTING_AREA,SUBJECT_GENDER,SUBJECT_DESCRIPTION,OFFICER_INJURY_TYPE,SUBJECT_INJURY_TYPE,OFFICER_ID,DIVISION,LOCATION_LATITUDE,LOCATION_LONGITUDE,LOCATION_CITY,STREET_NAME,OFFICER_YEARS_ON_FORCE,NUMBER_EC_CYCLES, FORCE_EFFECTIVE,OFFICER_INJURY,SUBJECT_INJURY, SECTOR,OFFICER_HOSPITALIZATION))
+selected_variables <- na.omit(selected_variables)
+```
+# Location Analysis
+
+First of all, we will do the location analysis to check the street's location in Dallas where incidents happened and add the points On the graph about the incidents that occurred in 2016 and then analyse the findings.
+# <b> Map Of Dallas (Points show where the incident occurred)</b>
+```{r echo=TRUE, warning=FALSE}
+# Data Map
+# creating a leaflet map centered in Dallas
+selected_variables$latitude <- as.numeric(selected_variables$LOCATION_LATITUDE)
+selected_variables$longitude <- as.numeric(selected_variables$LOCATION_LONGITUDE)
+# Identify rows with missing or invalid latitude/longitude values
+missing_rows <- which(!complete.cases(selected_variables$longitude, selected_variables$latitude) | 
+                      is.na(selected_variables$longitude) | 
+                      is.na(selected_variables$latitude))
+
+# Remove rows with missing or invalid latitude/longitude values
+selected_variables <- selected_variables[-missing_rows, ]
+
+leaflet(selected_variables) %>% addTiles() %>%
+  addCircleMarkers(lng = ~longitude, lat = ~latitude, 
+             popup = ~STREET_NAME,color= "blue") %>% addTiles("Test")
+```
+This provides us with an interactive map that displays incident locations along with popups that explain each incident's cause. I may enlarge and reduce the map's zoom levels, and I can click on each marker to get more details about the occurrence.
+
+
+# Incident Analysis 
+
+Now, moving forward we will check in which month of the year, more incidents were happened to get basic idea about how many incidents occurred each day and each month and analyse through line and bar graph, I will show number of incidents on the Y and Date, month on X axis and with ggplot I will visualize the data and analyse the findings.
+```{r echo=TRUE, warning=FALSE}
+Date_format <- as.Date(selected_variables$INCIDENT_DATE, "%m/%d/%Y")
+date_main <- na.omit(data.frame(Date_format))
+graph_data <- date_main %>% count(Date_format)
+
+graph_data$incidentnumber = graph_data$n
+graph_data$date = graph_data$Date_format
+
+G1 <- ggplot(graph_data, aes(x = date, y = incidentnumber)) +
+      geom_line(color = "#2f030a") + 
+      labs(title = "Total Number of Incidents against Date in 2016", x = "Date", y = "Total Number of Incidents")
+
+graph_data$Month <- month(as.POSIXlt(graph_data$Date_format, format = "%Y-%m-%d"))
+Order_data <- graph_data[order(graph_data$Month),]
+
+Month_Data <- Order_data %>% group_by(Month) %>% summarise(TotalIncidentNo = sum(incidentnumber))
+Month_Data$Month <- month.abb[Month_Data$Month]
+
+G2 <- ggplot(Month_Data, aes(x = Month, y = TotalIncidentNo, fill = TotalIncidentNo)) +
+      geom_bar(stat = "identity") +
+      scale_fill_gradient(low = "#c2989f", high = "#2f030a") +
+      labs(title = "Total Number of Incidents against Month (2016)", x = "Month", y = "Total Number of Incidents") +
+      geom_text(aes(label = TotalIncidentNo), colour = "grey", size = 3, vjust = 0.5, position = position_dodge(1))
+
+ggarrange(G1, G2, ncol = 1, nrow = 2)
+```
+
+
+After observing the above graphs we can easily get the idea that the highest numbers of incidents occurred in the month of MARCH,FEBRUARY, JANUARY, AND APRIL (decline in number) in the year 2016. it is obvious that quarter 4 of the year 2016 was the busiest quarter for both subjects and officers in Dallas.
+
+# Incident Reason Analysis
+Now we will analyse the reason of the incidents, what is the reason behind the most of the incidents happened in 2016 to get a clear picture of the problem and solution.
+I will demonstrate incident reason on a graph with different incidents to analyse which was mostly occurring in Dallas in 2016.
+
+
+```{r echo=TRUE, warning=FALSE}
+# bar plot of incident reason against the number of times its happening
+crime_type_data_number <- selected_variables %>% count(INCIDENT_REASON) %>% filter(n>10)%>%
+  arrange(desc(n))
+crime_type_data_number$Reason = crime_type_data_number$INCIDENT_REASON
+ggplot(crime_type_data_number, aes(x = Reason, y=n, fill= Reason)) +
+  geom_col(position ="Identity") +labs(title="Incident reason against the number of time",
+         x = "Type of incident", y = "Total number of time")+ coord_flip()
+```
+
+from the above graph we can see that number of Arrests happened mostly in the year 2016 then there was service call in the Dallas.
+
+# Division Analysis
+
+we will also see the the division analysis in which I will demonstrate the number of incidents happening in different divisions with the help of a interactive bar plot, of Dallas to collect some strong points in the analysis of our Data.
+```{r echo=TRUE, warning=FALSE}
+IncidentDivision <- selected_variables %>% count(DIVISION)
+IncidentDivision$numberofincident = IncidentDivision$n
+Incident_Graph <- ggplot(IncidentDivision, aes(x=DIVISION,y=numberofincident,fill=numberofincident)) +
+geom_bar(stat = "identity") +scale_fill_gradient(low="#820000",high="grey") +labs(title="Total Number incident against Division (2016) in Dallas",
+x ="Division", y = "Total number of incident")+theme(axis.text.x = element_text(angle=45))
+ggplotly (Incident_Graph)  
+
+```
+
+
+clearly we can see that central Dallas of Texas had most number of incidents occurred in 2016 in comparison of other divisions. so we can say that central Dallas is most targeted area for both the subjects and officers.
+
+# officer's and subject's Race Analysis
+Race can be the  one of the most important point in Data find the factors affecting our Analyses, and we can help police department get an idea to identify deployment areas where racial disparities exist in order to make adjustments.
+
+```{r echo=TRUE, warning=FALSE}
+OfficerRaceData<- selected_variables %>% count(OFFICER_RACE)
+subjectRaceData<- selected_variables %>% count(SUBJECT_RACE)
+OfficerRaceData$Number = OfficerRaceData$n
+subjectRaceData$Number = subjectRaceData$n
+OfficerRaceDataSet = OfficerRaceData[-c(1,2,5),]
+OfficerRaceDataSet$Race = OfficerRaceDataSet$OFFICER_RACE
+OfficerRaceDataSet$type = c("officer , officer, officer")
+subjectRaceDataSet = subjectRaceData[-c(1,2,5,6),]
+subjectRaceDataSet$Race = subjectRaceDataSet$SUBJECT_RACE
+subjectRaceDataSet$type = c ("subject, subject, subject")
+
+Subject_data_set <- subjectRaceDataSet[, 1:2]
+Officer_data_set <- OfficerRaceDataSet[, 1:2]
+AllData <- cbind.data.frame(Subject_data_set,Officer_data_set)
+datatable(AllData, options = list(
+  pageLength=5, ScrollX = "TRUE"))
+
+ # From this table we have an idea of numbers of people in three different race.
+officer_race <- c("Black", "Hispanic", "White")
+officer_count <- c(341, 482, 1470)
+subject_race <- c( "Black", "Hispanic", "White")
+subject_count <- c(1333, 524, 470)
+dataset <- data.frame(officer_race, officer_count, subject_race, subject_count)
+# plot the data
+ggplot(dataset, aes(x = officer_race, y = officer_count)) +
+  geom_point(aes(group = 1, color = "Officers"), size = 5) +
+  geom_point(aes(x = subject_race, y = subject_count, group = 1, color = "Subjects"), size = 5) +
+  labs(title = "Number of White, Black, and Hispanic Officers vs Subjects",
+       x = "Race",
+       y = "Number of People",
+       color = "") +
+  scale_color_manual(values = c("Officers" = "#183A1D", "Subjects" = "#F0A04B")) +
+  theme_minimal()
+```
+
+Here, I have selected only three Races because majority of subjects and officers are from these three races.
+After observing this figure we can see that number of White officers are much more than the number of subject officers. But, it's totally opposite for the Black race people, more black subjects are there in comparison to the number of Black officers. for Hispanic it is almost same for officers and subjects.
+
+# Gender Analysis of Officers and Subjects
+Moving ahead we will see the Gender Analysis of Gender and Subjects and compare the gaps in gender.
+
+```{r echo=TRUE, warning=FALSE}
+ Off_Data<- selected_variables%>% count(OFFICER_GENDER)
+  Sub_Data<- selected_variables %>% count(SUBJECT_GENDER)
+  Off_Data$Number = Off_Data$n
+  Sub_Data$Number = Sub_Data$n
+ sub_dataset =Sub_Data[-c(3,4),]
+ sub_dataset$gender = sub_dataset$SUBJECT_GENDER
+ sub_dataset$type =c("Subject","Subject")
+ Off_Data$gender = Off_Data$OFFICER_GENDER
+ Off_Data$type = c("Officer","Officer")
+  
+Sub_data_set = sub_dataset[,-c(1,2)]
+Off_data_set = Off_Data[,-c(1,2)]
+# combing both subjects and officers genders data
+Gen_Data <- rbind(Sub_data_set,Off_data_set)
+# to draw the graph
+ggplot(data =Gen_Data, aes(gender, Number,fill=Number) ) +geom_bar(stat='identity') + facet_wrap(~ type) +labs(title="Number of People against gender (Male/Female)",
+        x ="Gender", y = "Number of people")
+```
+
+Here, we can see that there is not much difference when we compare gender wise officers and subjects.But when we compare individual gender gaps in officers and subjects, there is a huge gap in male and female officers and same huge gap in male and female subjects. one another thing we can analyse from this graph is that number of female subjects are more in comparison to number of female officers.
+
+
+# Reason behind the Force - Analysis 
+we will now see the analysis of the Reason behind force used on the subjects.we will see what are most common reasons behind the force that is use on the subjects.
+
+```{r echo=TRUE, warning=FALSE}
+#Reason for the Force
+
+force_reason <- selected_variables %>%
+  count(REASON_FOR_FORCE) %>%
+  filter(n > 50) %>%
+  mutate(Resonfortheforce = REASON_FOR_FORCE)
+
+ggplot(force_reason, aes(x = Resonfortheforce, y = n, fill = Resonfortheforce)) +
+  geom_point(size = 4, shape = 21, color = "black", stroke = 0.5) +
+  scale_fill_brewer(palette = "Paired") +
+  labs(title = "Reason behind the force against number of time",
+       x = "Reason type", y = "Total number of time") +
+  theme_minimal() +
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), #choosing theme
+        axis.line = element_line(color = "black"), 
+        legend.title = element_text(size = 12, face = "bold"),
+        legend.text = element_text(size = 10)) +
+  annotate("text", x = force_reason$Resonfortheforce, y = force_reason$n + 10, # Add labels
+           label = force_reason$n, size = 3, vjust = 1, hjust = 0.5) +
+  coord_flip()
+```
+
+from the above graph we can analyse that Arrest is the most common reason behind the force being used followed by Danger to self and others ad then active aggression by the subjects. here we can say that most of the force reason was arrest because it's natural subjects wants to avoid Arrest and forcefully officers had to do that, and other reason for force is Danger to self and others, and Active aggression-for this also officers had to apply force on the subjects for public safety, normally.
+
+
+#  Offence Analysis 
+Moving ahead we will use "Box plot For the purpose of visualizing the distribution of officer years on force by officer race and analyse the outcome through the plot.
+ 
+```{r echo=TRUE, warning=FALSE}
+
+selected_variables$OFFICER_YEARS_ON_FORCE <- as.numeric(selected_variables$OFFICER_YEARS_ON_FORCE)
+# Create a box plot of officer years on force by race
+ggplot(selected_variables, aes(x = OFFICER_RACE, y = OFFICER_YEARS_ON_FORCE)) +
+  geom_boxplot(fill = "#3795BD", color = "#2F58CD") +
+  labs(title = "Officer Years on Force by Race", x = "Officer Race", y = "Years on Force") +
+  theme_minimal()
+```
+
+here The box plot demonstrates that white officers' median years on the force are higher than those of black and Hispanic cops.
+
+# Officer's years on force Analysis.
+In last we will do the Officer's years on force analysis where we will analyse the number of officers working years, since how many years they are in force and numbers of officers per year.
+
+```{r echo=TRUE, warning=FALSE}
+#analysis of number of years officers on force using histogram
+selected_variables<- arrange(selected_variables, OFFICER_YEARS_ON_FORCE)
+
+
+selected_variables$OFFICER_YEARS_ON_FORCE <-  as.numeric(selected_variables$OFFICER_YEARS_ON_FORCE)
+selected_variables$bin <- cut(selected_variables$OFFICER_YEARS_ON_FORCE, breaks = seq(0, max(selected_variables$OFFICER_YEARS_ON_FORCE), by = 5))
+# Plot histogram with interval of 5 on x-axis using ggplot2 package
+hist(selected_variables$OFFICER_YEARS_ON_FORCE, breaks = 50, col = "purple",
+     xlab = "Value", ylab = "Frequency", main = "Histogram of OFFICER_YEARS_ON_FORCE")
+  
+  labs(title = "Histogram of OFFICER_YEARS_ON_FORCE", x = "Value (Interval of 5)", y="Frequency")
+```
+here I have demonstrated the officer's years on force through density plot and created a interval of 5 years to show the number of officer's density in each particular interval year.
+
+
+# correlation Analysis
+
+To determine the strength and direction of the linear link between two variables, I had performed correlation analysis. This enables us to determine whether and how strongly there is a relationship between the variables. For instance, we can determine the association between the quantity of Officers years on force and the sector.
+
+```{r echo=TRUE, warning=FALSE}
+# Create correlation matrix
+# Identify rows with complete data
+variables_complete <- complete.cases(selected_variables)
+
+# Subset data to include only complete rows
+variables_complete <- selected_variables[variables_complete, ]
+# Select the columns of interest
+variables_subset <- selected_variables %>% 
+  select(OFFICER_YEARS_ON_FORCE, SECTOR)
+
+class(variables_subset$OFFICER_YEARS_ON_FORCE)
+class(variables_subset$SECTOR)
+
+variables_subset$OFFICER_YEARS_ON_FORCE <- as.numeric(variables_subset$OFFICER_YEARS_ON_FORCE)
+variables_subset$SECTOR <- as.numeric(variables_subset$SECTOR)
+
+
+# Calculate the correlation coefficient
+correlation <- cor(variables_subset$OFFICER_YEARS_ON_FORCE, variables_subset$SECTOR)
+
+# Print the correlation coefficient
+print(correlation)
+```
+
+I can visually explore the link between the two variables (**OFFICER_YEARS_ON_FORCE** by **SECTOR**) with the use of this code. If we only wish to use numerical variables to get the correlation coefficient, we can omit the **SECTOR** variable: -
+
+
+```{r}
+# Create boxplot of officer years on force by sector
+ggplot(variables_subset, aes(x = SECTOR, y = OFFICER_YEARS_ON_FORCE)) +
+  geom_boxplot() +
+  labs(title = "Officer Years on Force by Sector", x = "Sector", y = "Officer Years on Force")
+```
+
+```{r}
+variables_numeric <- select_if(variables_subset, is.numeric)
+# Calculate the correlation matrix
+corr_matrix <- cor(variables_numeric)
+
+# Print the correlation matrix
+print(corr_matrix)
+
+# Visualize correlation matrix as a heatmap
+ggcorrplot(corr_matrix, outline.color = "yellow", colors = c("#F0ECCF", "#FFB100", "#F0ECCF"))
+
+```
+here it appears that the number of sector is connected with the use of force by officers, suggesting that when we see some sectors, officers are more likely to use force.
+
+
+# Subject description Analysis
+
+we will analyse the subjects description, about the condition of subject in which they did the offence and analyse the root cause behind the reason and mentality of the subjects.
+
+
+```{r echo=TRUE, warning=FALSE}
+Sub_description <- selected_variables%>% count(SUBJECT_DESCRIPTION)  %>% filter(n>110)
+Sub_description$descriptionofsubject = Sub_description$SUBJECT_DESCRIPTION
+
+# create pie chart with labels
+ggplot(Sub_description, aes(x = "", y = n, fill = descriptionofsubject)) +
+  geom_bar(stat = "identity", width = 0.6) +
+  coord_polar(theta = "y") +
+  labs(x = "", y = "", fill = "Subject Description") +
+  ggtitle("Pie Chart of Subject Description") +
+  scale_fill_brewer(palette = "Set1") +
+  geom_text(aes(label = n), position = position_stack(vjust = 0.5))
+```
+
+from the above figure we can see that subject description having mental instability have most number of offences followed by alcohol, Alcohol being 2nd most reason for offence committed by subjects, then drugs being 3rd most common reason of subjects description committing offence.
+
+# Officer's Id Analysis
+
+Now we will do the officers id analysis to check Average number of incidents per officer with the help of gauge plot and see the outcome.
+
+```{r echo=TRUE, warning=FALSE}
+
+officers_ID <- selected_variables %>% count(OFFICER_ID) %>%  filter(n > 10) 
+
+library(plotly)
+
+# Calculate the average number of incidents per officer
+avg_incidents <- mean(officers_ID$n)
+
+# Create the gauge plot
+plot_ly(
+  type = "indicator",
+  mode = "gauge+number",
+  value = avg_incidents,
+  title = list(text = "Average Number of Incidents per Officer"),
+  gauge = list(
+    axis = list(range = c(0, max(officers_ID$n))),
+    bar = list(color = "#263A29"),
+    steps = list(
+      list(range = c(0, max(officers_ID$n) * 0.33), color = "#F15A59"),
+      list(range = c(max(officers_ID$n) * 0.33, max(officers_ID$n) * 0.66), color = "#F15A59"),
+      list(range = c(max(officers_ID$n) * 0.66, max(officers_ID$n)), color = "#F15A59")
+    )
+  )
+)
+
+```
+here we can analyse that Average number of incidents per officers is 15.22.
+
+# Total number of Incidents vs. Race
+
+here we will analyse the the Officers Race, Officers gender and Officers injury and then discuss the analysis and outcomes
+
+```{r echo=TRUE}
+ggplot(selected_variables, aes(OFFICER_GENDER, OFFICER_RACE, fill=OFFICER_INJURY, group= OFFICER_INJURY)) +
+  geom_boxplot() +
+  ggtitle("Total number of Incidents vs. Race") +
+  scale_fill_manual(values= c("#F97B22","#FFFFFF")) +
+  theme_minimal()
+```
+from this box plot we observe that white female is less likely to be injured, and white male officers are more likely to get injured. 
+
+# Use of smoothing to illustrate pattern/trend
+In order to find patterns or trends in the data, I utilised smoothing. For instance, to a scatterplot of officer injured and efficacy of force, we can add a smoothed line:
+
+```{r warning=FALSE}
+# Identifying rows with complete data
+complete_data <- complete.cases(selected_variables)
+
+# Subset data need to include only complete number rows
+ variables_complete<- selected_variables[complete_data, ]
+ggplot(variables_complete, aes(OFFICER_INJURY, FORCE_EFFECTIVE)) +
+  geom_point(alpha = 0.7, color = "steelblue") +
+  geom_smooth(method = "loess", se = FALSE, color = "black") +
+  labs(title = "officers Injury vs Force Effectiveness", x = "Officers Injury", y = "Force Effectiveness") +
+  theme_minimal()
+
+```
+
+## Conclusion
+In conclusion we can say that Dallas central area is the busiest and most of the cases were happening there in the year 2016 in Dallas,Texas.Also, there is more subjects of Black race than the black officers and More white officers in comparison to the white subjects. here in conclusion we can say that there are lots of deployment areas where adjustment needs to be done, for the robust and fair policing system in Dallas.
+In short, these visualisations help us better grasp the connections between the dataset's many characteristics and point out areas that may need additional research and attention.
+
+
+
+# References
+Link : https://rstudio.github.io/leaflet/
+Link : https://WWW.herefortexas.com/
+
+
+
